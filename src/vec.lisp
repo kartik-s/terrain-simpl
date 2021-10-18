@@ -2,8 +2,6 @@
 
 (in-package :vec)
 
-(defparameter *epsilon* 1e-3)
-
 (defstruct (vec2 (:constructor vec2 (x y)))
   x y)
 
@@ -12,12 +10,9 @@
 	(dy (- (vec2-y v0) (vec2-y v1))))
     (sqrt (+ (* dx dx) (* dy dy)))))
 
-(defun eps-guard (x)
-  (if (zerop x) *epsilon* x))
-
 (defun vec2-slope (v0 v1)
   (/ (float (- (vec2-y v1) (vec2-y v0)))
-     (eps-guard (float (- (vec2-x v1) (vec2-x v0))))))
+     (float (- (vec2-x v1) (vec2-x v0)))))
 
 (defun vec2-hash-key (v)
   (intern (format nil "~a-~a" (vec2-x v) (vec2-y v))))

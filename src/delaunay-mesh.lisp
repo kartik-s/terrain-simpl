@@ -68,12 +68,13 @@
   (> (orient-2d point (dest edge) (origin edge)) *epsilon*))
 
 (defun left-of-p (point edge)
-  (> (- *epsilon*) (orient-2d point (dest edge) (origin edge))))
+  (< (orient-2d point (dest edge) (origin edge)) (- *epsilon*)))
 
 (defun on-edge-p (point edge)
-  (> *epsilon* (abs (- (vec2-dist (origin edge) (dest edge))
-		       (+ (vec2-dist (origin edge) point)
-			  (vec2-dist point (dest edge)))))))
+  (< (abs (- (vec2-dist (origin edge) (dest edge))
+	     (+ (vec2-dist (origin edge) point)
+		(vec2-dist point (dest edge)))))
+     *epsilon*))
 
 (defun in-circle-p (a b c d)
   (let* ((adx (- (vec2-x a) (vec2-x d)))
@@ -89,7 +90,7 @@
 	 (b-lift (+ (* bdx bdx) (* bdy bdy)))
 	 (c-lift (+ (* cdx cdx) (* cdy cdy))))
     (> (+ (* a-lift bc-det) (* b-lift ca-det) (* c-lift ab-det))
-       *epsilon*)))
+       0)))
 
 (defun locate-point (mesh point)
   (labels ((locate (edge)
@@ -116,12 +117,13 @@
 			  tmp)))))
 	   (insert-spoke-edges (first-face-edge)
 	     (let* ((first-origin (origin first-face-edge))
-		    (first-spoke (make-edge :origin first-origin :dest point)))
+		    (first-spoke (sym (make-edge :origin first-origin :dest point))))
 	       (splice (sym first-spoke) first-face-edge)
-	       (loop for spoke-sym = (sym first-spoke) then (connect face-edge (sym spoke-sym))
-		     for face-edge = first-face-edge then (oprev spoke-sym)
-		     until (approx-equal (dest face-edge) first-origin))
-	       first-spoke))
+	       (values first-spoke
+		       (loop for spoke-sym = (sym first-spoke) then (connect face-edge (sym spoke-sym))
+			     for face-edge = first-face-edge then (oprev spoke-sym)
+			     until (approx-equal (dest face-edge) first-origin)
+			     finally (return face-edge)))))
 	   (fix-suspect-edges (first-origin suspect-edge)
 	     (let ((tmp (oprev suspect-edge)))
 	       (cond ((and (right-of-p (dest tmp) suspect-edge)
@@ -133,12 +135,13 @@
 		     (t (fix-suspect-edges first-origin
 					   (edge-walk (onext lprev) suspect-edge)))))))
     (let ((first-face-edge (face-edge)))
-      (cond ((null first-face-edge) nil)
-	    (t (let ((first-spoke-edge (insert-spoke-edges first-face-edge)))
-		 (fix-suspect-edges (origin first-face-edge)
-				    (edge-walk (sym lprev) first-spoke-edge))
+      (cond ((null first-face-edge) (values nil nil))
+	    (t (setf (delaunay-mesh-starting-edge mesh) first-face-edge)
+	       (multiple-value-bind (first-spoke-edge suspect-edge)
+		   (insert-spoke-edges first-face-edge)
+		 (fix-suspect-edges (origin first-face-edge) suspect-edge)
 		 ;; collect old face data
-		 (let ((old-face-data (make-hash-table)))
+		 (let ((old-face-data (make-hash-table :test #'eql)))
 		   (loop for oedge in (origin-edges first-spoke-edge) do
 		     (loop for fedge in (lface-edges oedge) do
 		       (when (not (null (lface-data fedge)))
@@ -148,7 +151,7 @@
 
 (defun all-faces (mesh)
   (let ((faces (make-array 1 :fill-pointer 0 :adjustable t))
-	(visited-edges (make-hash-table))
+	(visited-edges (make-hash-table :test #'eql))
 	(pending-edges (make-array 1 :fill-pointer 0 :adjustable t)))
     (loop for face-edge = (delaunay-mesh-starting-edge mesh) then (vector-pop pending-edges) do
       (cond ((gethash face-edge visited-edges) nil)
@@ -158,5 +161,4 @@
 		 (unless (gethash (sym edge) visited-edges)
 		   (vector-push-extend (sym edge) pending-edges)))))
       (when (zerop (length pending-edges))
-	(return)))
-    faces))
+	(return faces)))))

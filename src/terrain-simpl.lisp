@@ -2,7 +2,7 @@
 
 (in-package :terrain-simpl)
 
-(sb-int:set-floating-point-modes :traps '())
+(sb-int:set-floating-point-modes :traps '(:invalid))
 
 (defstruct (height-field (:constructor %make-height-field))
   height
@@ -47,8 +47,8 @@
       (%make-terrain :mesh mesh))))
 
 (defun greedily-insert-points (mesh height-field goal-p)
-  (let ((candidate-points (make-priority-queue :greater-p #'(lambda (c0 c1)
-							      (> (getf c0 :err) (getf c1 :err)))
+  (let ((candidate-points (make-priority-queue :greater-p
+					       #'(lambda (c0 c1) (> (getf c0 :err) (getf c1 :err)))
 					       :initial-size 20))
 	(inserted-points (make-hash-table)))
     (labels ((next-candidate ()
@@ -73,7 +73,6 @@
 		   ;; update the spoke edge endpoints, then find and
 		   ;; insert the candidate points for the newly created
 		   ;; mesh faces
-
 		   (dolist (spoke-edge (origin-edges first-spoke-edge))
 		     (setf (odata spoke-edge)
 			   (height-field-get height-field (getf candidate :point)))
@@ -146,21 +145,16 @@
 		    (vector-push-extend (vec2 x y) points))))
 	points))))
 
-(defparameter *epsilon* 1e-3)
-
-(defun eps-guard (x)
-  (if (zerop x) *epsilon* x))
-
 (defun face-normal (e0)
   (let* ((p0 (vec3 (vec2-x (origin e0)) (odata e0) (vec2-y (origin e0))))
 	 (p1 (vec3 (vec2-x (dest e0)) (odata (sym e0)) (vec2-y (dest e0))))
 	 (p2 (vec3 (vec2-x (dest (lnext e0))) (odata (edge-walk (lnext sym) e0)) (vec2-y (dest (lnext e0))))))
-    (vec3-unit (vec3-cross (vec3-sub p1 p0) (vec3-unit (vec3-sub p2 p0))))) )
+    (vec3-unit (vec3-cross (vec3-sub p1 p0) (vec3-sub p2 p0)))))
 
 (defun find-face-candidate (face-edge height-field inserted-points)
   (labels ((height-interpolator (face-normal face-point)
-	     (let* ((n-zy (/ (vec3-z face-normal) (eps-guard (vec3-y face-normal))))
-		    (n-xy (/ (vec3-x face-normal) (eps-guard (vec3-y face-normal))))
+	     (let* ((n-zy (/ (vec3-z face-normal) (vec3-y face-normal)))
+		    (n-xy (/ (vec3-x face-normal) (vec3-y face-normal)))
 		    (c (+ (* n-xy (vec3-x face-point))
 			  (vec3-y face-point)
 			  (* n-zy (vec3-z face-point)))))
@@ -182,8 +176,10 @@
 			 points :initial-value '(nil -1))))
       (destructuring-bind (best-point max-err)
 	  best
-	(nconc (lface-data face-edge)
-	       (list :point best-point :valid t :err max-err))))))
+	(let ((new-data (append (lface-data face-edge)
+				(list :point best-point :valid t :err max-err)) ))
+	  (set-lface-data face-edge new-data)
+	  new-data)))))
 
 (defun write-stl (terrain filename)
   (with-open-file (out filename :direction :output :if-exists :supersede)
