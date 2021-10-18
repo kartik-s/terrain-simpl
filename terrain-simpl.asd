@@ -3,6 +3,7 @@
   :version "0.0.1"
   :author "Kartik Singh <kartik@freelygenerated.com"
   :license "BSD 2-Clause License"
+  :depends-on (#:pngload)
   :components
   ((:module src
     :serial t
